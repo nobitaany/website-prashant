@@ -1,8 +1,73 @@
+I understand you need the **complete code** for the attendance system in a single, plain text block, without the file block formatting, so you can copy and paste it easily.
+
+Here is the entire content of the updated `index.html` file.
+
+-----
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Attendance System (Client-Side) - Google Drive Ready (V2)</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* Custom styles for a clean, mobile-first design */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container-card {
+            max-width: 95%;
+            margin: 1rem auto;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        #video, #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            /* Maintain an aspect ratio appropriate for webcams */
+            padding-top: 75%; 
+            height: 0; /* Use padding-top for responsive height */
+            border-radius: 8px;
+        }
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            transform: scaleX(-1); /* Flip video horizontally for mirror view */
+        }
+        #overlay-canvas {
+            transform: scaleX(-1); /* Flip canvas to match the flipped video */
+        }
+        .loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.25rem;
+            color: #4b5563;
+        }
+    </style>
+</head>
 <body>
 
     <div class="container-card bg-white p-6 md:p-8">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">Face Attendance Scanner</h1>
-        <p class="text-gray-600 mb-6">Attendance check using **Google Drive** for reference images. Please face the camera clearly.</p>
+        <p class="text-gray-600 mb-6">Attendance check using **Google Drive** for reference images (supports multiple images per person).</p>
 
         <!-- Video Container -->
         <div id="video-container" class="mb-4 bg-gray-200 rounded-lg">
@@ -18,9 +83,9 @@
 
         <!-- Instructions for Known Faces -->
         <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h3 class="font-semibold text-lg text-yellow-800 mb-2">Known Faces List (Reference Data - Drive IDs)</h3>
+            <h3 class="font-semibold text-lg text-yellow-800 mb-2">Known Faces List (Reference Data - Drive URLs)</h3>
             <p class="text-sm text-yellow-700">
-                The system fetches images using the Google Drive File ID. **IMPORTANT:** Each file must be set to "Public" sharing permission.
+                The system uses full Google Drive URLs. **IMPORTANT:** Each file must be set to "Public" sharing permission.
             </p>
             <ul id="known-faces-list" class="mt-2 text-sm text-yellow-900 list-disc list-inside grid grid-cols-2 sm:grid-cols-3">
                 <!-- List will be populated by JS -->
@@ -30,7 +95,6 @@
         <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden"></div>
     </div>
     
-    <!-- FIX: Moved face-api.js CDN link here to ensure it loads before our main script uses it -->
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@1.0.0/dist/face-api.min.js"></script>
 
     <script type="text/javascript">
@@ -43,43 +107,60 @@
         const MODEL_URL = '/models'; // *** CRUCIAL: Path to your local /models folder ***
         const ATTENDANCE_THRESHOLD = 0.6; // Lower number is stricter match (0.6 is good balance)
         
-        /**
-         * Converts a Google Drive File ID into a direct download URL.
-         * This format allows the browser to fetch the image content directly.
-         * @param {string} driveId - The unique ID of the Google Drive file.
-         * @returns {string} The direct public URL.
-         */
-        function getDriveDirectLink(driveId) {
-            return `https://drive.google.com/uc?export=download&id=${driveId}`;
-        }
-
-        // Define your known people and their reference images using Google Drive File IDs
-        const KNOWN_PEOPLE = [
-            // *** YOU MUST REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL PUBLIC GOOGLE DRIVE FILE IDs ***
-            { name: 'Alice Smith', driveId: 'ALICE_FILE_ID_1' },
-            { name: 'Bob Johnson', driveId: 'BOB_FILE_ID_2' },
-            { name: 'Charlie Brown', driveId: 'CHARLIE_FILE_ID_3' },
-            { name: 'David Lee', driveId: 'DAVID_FILE_ID_4' },
-            { name: 'Eva Green', driveId: 'EVA_FILE_ID_5' },
-            { name: 'Fiona White', driveId: 'FIONA_FILE_ID_6' },
-            { name: 'George Kim', driveId: 'GEORGE_FILE_ID_7' },
-            { name: 'Hannah Day', driveId: 'HANNAH_FILE_ID_8' },
-            { name: 'Ivan Chen', driveId: 'IVAN_FILE_ID_9' },
-            { name: 'Jane Doe', driveId: 'JANE_FILE_ID_10' },
-            { name: 'Kelly Rod', driveId: 'KELLY_FILE_ID_11' },
-            { name: 'Liam Hall', driveId: 'LIAM_FILE_ID_12' },
-            { name: 'Mia Cruz', driveId: 'MIA_FILE_ID_13' },
-            { name: 'Noah Bell', driveId: 'NOAH_FILE_ID_14' },
-            { name: 'Olivia King', driveId: 'OLIVIA_FILE_ID_15' },
-            { name: 'Paul West', driveId: 'PAUL_FILE_ID_16' },
-            { name: 'Quinn Fox', driveId: 'QUINN_FILE_ID_17' },
-            { name: 'Ryan Stone', driveId: 'RYAN_FILE_ID_18' },
-            { name: 'Sara Hart', driveId: 'SARA_FILE_ID_19' },
-            { name: 'Tom Jones', driveId: 'TOM_FILE_ID_20' },
+        // --- START YOUR DATA DEFINITION HERE ---
+        const knownPeople = [
+            // REPLACE THESE PLACEHOLDER URLs WITH YOUR ACTUAL PUBLIC GOOGLE DRIVE LINKS
+            // Multiple URLs are highly recommended for better accuracy!
+            { label: 'Prashant Yadav', urls: [
+                'https://drive.google.com/file/d/1DUC6JWodRRGTwDIPRbRdc14wzvJRfFnR/view?usp=drive_link',
+                'https://drive.google.com/file/d/1sNolciYUKNSjIp5lkhL0abWnPQ_w2JqE/view?usp=drive_link'
+            ] },
+            { label: 'EM', urls: [
+                'https://drive.google.com/file/d/1hlnuqIKUBu6lOVQFfYbUGtXeZyGqETo4/view?usp=drive_link'
+            ]},
+            // Placeholder data for 18 more students (Update with real data)
+            { label: 'Student 3', urls: ['https://drive.google.com/file/d/PH_ID_3/view?usp=drive_link'] },
+            { label: 'Student 4', urls: ['https://drive.google.com/file/d/PH_ID_4/view?usp=drive_link'] },
+            { label: 'Student 5', urls: ['https://drive.google.com/file/d/PH_ID_5/view?usp=drive_link'] },
+            { label: 'Student 6', urls: ['https://drive.google.com/file/d/PH_ID_6/view?usp=drive_link'] },
+            { label: 'Student 7', urls: ['https://drive.google.com/file/d/PH_ID_7/view?usp=drive_link'] },
+            { label: 'Student 8', urls: ['https://drive.google.com/file/d/PH_ID_8/view?usp=drive_link'] },
+            { label: 'Student 9', urls: ['https://drive.google.com/file/d/PH_ID_9/view?usp=drive_link'] },
+            { label: 'Student 10', urls: ['https://drive.google.com/file/d/PH_ID_10/view?usp=drive_link'] },
+            { label: 'Student 11', urls: ['https://drive.google.com/file/d/PH_ID_11/view?usp=drive_link'] },
+            { label: 'Student 12', urls: ['https://drive.google.com/file/d/PH_ID_12/view?usp=drive_link'] },
+            { label: 'Student 13', urls: ['https://drive.google.com/file/d/PH_ID_13/view?usp=drive_link'] },
+            { label: 'Student 14', urls: ['https://drive.google.com/file/d/PH_ID_14/view?usp=drive_link'] },
+            { label: 'Student 15', urls: ['https://drive.google.com/file/d/PH_ID_15/view?usp=drive_link'] },
+            { label: 'Student 16', urls: ['https://drive.google.com/file/d/PH_ID_16/view?usp=drive_link'] },
+            { label: 'Student 17', urls: ['https://drive.google.com/file/d/PH_ID_17/view?usp=drive_link'] },
+            { label: 'Student 18', urls: ['https://drive.google.com/file/d/PH_ID_18/view?usp=drive_link'] },
+            { label: 'Student 19', urls: ['https://drive.google.com/file/d/PH_ID_19/view?usp=drive_link'] },
+            { label: 'Student 20', urls: ['https://drive.google.com/file/d/PH_ID_20/view?usp=drive_link'] }
         ];
+        // --- END YOUR DATA DEFINITION HERE ---
 
         let faceMatcher = null;
         let detectionInterval = null;
+
+        /**
+         * Extracts the File ID from the full Google Drive URL and converts it to a direct download URL.
+         * @param {string} driveUrl - The full public Google Drive URL.
+         * @returns {string|null} The direct public URL or null if parsing fails.
+         */
+        function getDriveDirectLink(driveUrl) {
+            // Regex to match the file ID from a standard Google Drive sharing link
+            const regex = /\/d\/([a-zA-Z0-9_-]+)/;
+            const match = driveUrl.match(regex);
+            
+            if (match && match[1]) {
+                const driveId = match[1];
+                // This is the direct download format required for fetching image data
+                return `https://drive.google.com/uc?export=download&id=${driveId}`;
+            }
+            console.warn("Failed to parse File ID from URL:", driveUrl);
+            return null;
+        }
 
         /**
          * Utility to display errors on the UI
@@ -109,7 +190,7 @@
                 statusMessage.textContent = 'Models loaded. Processing known faces from Google Drive...';
 
                 // 2. Process known faces
-                faceMatcher = await createFaceMatcher(KNOWN_PEOPLE);
+                faceMatcher = await createFaceMatcher(knownPeople);
 
                 document.getElementById('loading').style.display = 'none';
                 statusMessage.textContent = 'Initialization Complete. Starting Webcam.';
@@ -117,60 +198,60 @@
 
             } catch (error) {
                 // This error usually happens if models are not found at the /models path (404 error)
-                displayError('Failed to load models or face data. Check if the `/models` folder exists and contains all required files.');
-                console.error(error);
+                displayError('Failed during initialization. Check console for details (Model loading or Face processing failed).');
+                console.error("Initialization Error:", error);
                 document.getElementById('loading').textContent = 'Initialization Failed.';
             }
         }
 
         /**
          * Loads images via Google Drive links, detects faces, computes descriptors, and creates a FaceMatcher.
-         * @param {Array<Object>} labeledFaces - Array of objects with name and driveId.
+         * @param {Array<Object>} knownPeople - Array of objects with label and urls.
          * @returns {faceapi.FaceMatcher}
          */
-        async function createFaceMatcher(labeledFaces) {
+        async function createFaceMatcher(knownPeople) {
             const labeledDescriptors = [];
             let successfulDescriptors = 0;
 
-            for (const person of labeledFaces) {
-                // Use the utility function to get the direct download link
-                const imageUrl = getDriveDirectLink(person.driveId); 
-                
-                // Add person name to the list on the UI
-                knownFacesList.innerHTML += `<li class="truncate">${person.name}</li>`;
+            for (const person of knownPeople) {
+                const descriptors = [];
+                // Display the name of the person being processed
+                knownFacesList.innerHTML += `<li class="truncate">${person.label} (${person.urls.length} images)</li>`;
 
-                // Skip placeholder IDs
-                if (person.driveId.startsWith('ALICE_FILE_ID')) {
-                    console.warn(`Skipping placeholder ID for ${person.name}. Please update KNOWN_PEOPLE with real Drive IDs.`);
-                    continue; 
+                for (const url of person.urls) {
+                    const directLink = getDriveDirectLink(url);
+                    if (!directLink) continue; // Skip if URL parsing failed
+
+                    try {
+                        // Fetch the image from the direct Google Drive link
+                        const img = await faceapi.fetchImage(directLink);
+                        
+                        // Detect and compute descriptor for the image
+                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+
+                        if (detection && detection.descriptor) {
+                            descriptors.push(detection.descriptor);
+                            successfulDescriptors++;
+                        } else {
+                            console.warn(`Could not detect face in image for ${person.label} from URL: ${url}. Skipping.`);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to fetch/process image for ${person.label} from URL: ${url}. Check "Public" permission.`, e);
+                    }
                 }
 
-
-                try {
-                    // Fetch the image from the direct Google Drive link
-                    const img = await faceapi.fetchImage(imageUrl);
-                    
-                    const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-
-                    if (detection && detection.descriptor) {
-                        labeledDescriptors.push(
-                            new faceapi.LabeledFaceDescriptors(person.name, [detection.descriptor])
-                        );
-                        successfulDescriptors++;
-                    } else {
-                        console.warn(`Could not detect face in image for: ${person.name} (ID: ${person.driveId}).`);
-                    }
-                } catch (e) {
-                    displayError(`Failed to fetch/process image for ${person.name}. Check if the Drive ID (${person.driveId}) is correct and the file is set to "Public".`);
-                    console.error(e);
+                // Only add a LabeledFaceDescriptors if at least one image had a successful face descriptor
+                if (descriptors.length > 0) {
+                    labeledDescriptors.push(
+                        new faceapi.LabeledFaceDescriptors(person.label, descriptors)
+                    );
+                } else {
+                    console.warn(`No valid face descriptors generated for ${person.label}. This person will be 'unknown'.`);
                 }
             }
 
-            if (successfulDescriptors === 0) {
-                // Only throw error if we failed to process images *after* filtering placeholders.
-                if (labeledDescriptors.length === 0) {
-                     throw new Error("No valid face descriptors could be generated. Check image URLs/IDs and file permissions.");
-                }
+            if (labeledDescriptors.length === 0) {
+                 throw new Error("Initialization Failed: No valid face descriptors could be generated from any provided images. Check all Google Drive URLs and file permissions.");
             }
 
             // Create the FaceMatcher with the generated descriptors and the threshold
@@ -269,7 +350,7 @@
 
         // --- Execution Flow ---
         window.onload = async () => {
-            // FIX: Check if faceapi loaded successfully before proceeding
+            // Check if faceapi loaded successfully before proceeding
             if (typeof faceapi === 'undefined') {
                 displayError("Failed to load the face recognition library (face-api.js). Please check the CDN link or your network connection.");
                 return; // Stop execution
@@ -291,3 +372,4 @@
     </script>
 </body>
 </html>
+```
