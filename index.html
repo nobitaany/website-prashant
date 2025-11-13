@@ -1,15 +1,293 @@
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Page</title>
-</head>
-
 <body>
-    <h1>This is Main Heading</h1>
-    <p>This is the first page.</p>
-</body>
 
+    <div class="container-card bg-white p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Face Attendance Scanner</h1>
+        <p class="text-gray-600 mb-6">Attendance check using **Google Drive** for reference images. Please face the camera clearly.</p>
+
+        <!-- Video Container -->
+        <div id="video-container" class="mb-4 bg-gray-200 rounded-lg">
+            <video id="video" autoplay muted></video>
+            <canvas id="overlay-canvas"></canvas>
+            <div id="loading" class="loading-message">Loading AI models...</div>
+        </div>
+
+        <!-- Status and Results Area -->
+        <div id="status-message" class="p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-gray-500">
+            System Initializing...
+        </div>
+
+        <!-- Instructions for Known Faces -->
+        <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <h3 class="font-semibold text-lg text-yellow-800 mb-2">Known Faces List (Reference Data - Drive IDs)</h3>
+            <p class="text-sm text-yellow-700">
+                The system fetches images using the Google Drive File ID. **IMPORTANT:** Each file must be set to "Public" sharing permission.
+            </p>
+            <ul id="known-faces-list" class="mt-2 text-sm text-yellow-900 list-disc list-inside grid grid-cols-2 sm:grid-cols-3">
+                <!-- List will be populated by JS -->
+            </ul>
+        </div>
+
+        <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden"></div>
+    </div>
+    
+    <!-- FIX: Moved face-api.js CDN link here to ensure it loads before our main script uses it -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@1.0.0/dist/face-api.min.js"></script>
+
+    <script type="text/javascript">
+        // Global Variables
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay-canvas');
+        const statusMessage = document.getElementById('status-message');
+        const knownFacesList = document.getElementById('known-faces-list');
+        const errorMessage = document.getElementById('error-message');
+        const MODEL_URL = '/models'; // *** CRUCIAL: Path to your local /models folder ***
+        const ATTENDANCE_THRESHOLD = 0.6; // Lower number is stricter match (0.6 is good balance)
+        
+        /**
+         * Converts a Google Drive File ID into a direct download URL.
+         * This format allows the browser to fetch the image content directly.
+         * @param {string} driveId - The unique ID of the Google Drive file.
+         * @returns {string} The direct public URL.
+         */
+        function getDriveDirectLink(driveId) {
+            return `https://drive.google.com/uc?export=download&id=${driveId}`;
+        }
+
+        // Define your known people and their reference images using Google Drive File IDs
+        const KNOWN_PEOPLE = [
+            // *** YOU MUST REPLACE THESE PLACEHOLDERS WITH YOUR ACTUAL PUBLIC GOOGLE DRIVE FILE IDs ***
+            { name: 'Alice Smith', driveId: 'ALICE_FILE_ID_1' },
+            { name: 'Bob Johnson', driveId: 'BOB_FILE_ID_2' },
+            { name: 'Charlie Brown', driveId: 'CHARLIE_FILE_ID_3' },
+            { name: 'David Lee', driveId: 'DAVID_FILE_ID_4' },
+            { name: 'Eva Green', driveId: 'EVA_FILE_ID_5' },
+            { name: 'Fiona White', driveId: 'FIONA_FILE_ID_6' },
+            { name: 'George Kim', driveId: 'GEORGE_FILE_ID_7' },
+            { name: 'Hannah Day', driveId: 'HANNAH_FILE_ID_8' },
+            { name: 'Ivan Chen', driveId: 'IVAN_FILE_ID_9' },
+            { name: 'Jane Doe', driveId: 'JANE_FILE_ID_10' },
+            { name: 'Kelly Rod', driveId: 'KELLY_FILE_ID_11' },
+            { name: 'Liam Hall', driveId: 'LIAM_FILE_ID_12' },
+            { name: 'Mia Cruz', driveId: 'MIA_FILE_ID_13' },
+            { name: 'Noah Bell', driveId: 'NOAH_FILE_ID_14' },
+            { name: 'Olivia King', driveId: 'OLIVIA_FILE_ID_15' },
+            { name: 'Paul West', driveId: 'PAUL_FILE_ID_16' },
+            { name: 'Quinn Fox', driveId: 'QUINN_FILE_ID_17' },
+            { name: 'Ryan Stone', driveId: 'RYAN_FILE_ID_18' },
+            { name: 'Sara Hart', driveId: 'SARA_FILE_ID_19' },
+            { name: 'Tom Jones', driveId: 'TOM_FILE_ID_20' },
+        ];
+
+        let faceMatcher = null;
+        let detectionInterval = null;
+
+        /**
+         * Utility to display errors on the UI
+         * @param {string} msg 
+         */
+        function displayError(msg) {
+            errorMessage.textContent = `Error: ${msg}`;
+            errorMessage.classList.remove('hidden');
+            console.error(msg);
+        }
+
+        /**
+         * 1. Loads all necessary AI models.
+         * 2. Fetches and processes known face images to create descriptors.
+         */
+        async function loadModelsAndData() {
+            try {
+                statusMessage.textContent = 'Loading AI models...';
+                
+                // 1. Load models from the /models folder
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+
+                statusMessage.textContent = 'Models loaded. Processing known faces from Google Drive...';
+
+                // 2. Process known faces
+                faceMatcher = await createFaceMatcher(KNOWN_PEOPLE);
+
+                document.getElementById('loading').style.display = 'none';
+                statusMessage.textContent = 'Initialization Complete. Starting Webcam.';
+                statusMessage.className = 'p-4 text-center rounded-lg font-bold text-white shadow-md transition-all duration-300 bg-green-500';
+
+            } catch (error) {
+                // This error usually happens if models are not found at the /models path (404 error)
+                displayError('Failed to load models or face data. Check if the `/models` folder exists and contains all required files.');
+                console.error(error);
+                document.getElementById('loading').textContent = 'Initialization Failed.';
+            }
+        }
+
+        /**
+         * Loads images via Google Drive links, detects faces, computes descriptors, and creates a FaceMatcher.
+         * @param {Array<Object>} labeledFaces - Array of objects with name and driveId.
+         * @returns {faceapi.FaceMatcher}
+         */
+        async function createFaceMatcher(labeledFaces) {
+            const labeledDescriptors = [];
+            let successfulDescriptors = 0;
+
+            for (const person of labeledFaces) {
+                // Use the utility function to get the direct download link
+                const imageUrl = getDriveDirectLink(person.driveId); 
+                
+                // Add person name to the list on the UI
+                knownFacesList.innerHTML += `<li class="truncate">${person.name}</li>`;
+
+                // Skip placeholder IDs
+                if (person.driveId.startsWith('ALICE_FILE_ID')) {
+                    console.warn(`Skipping placeholder ID for ${person.name}. Please update KNOWN_PEOPLE with real Drive IDs.`);
+                    continue; 
+                }
+
+
+                try {
+                    // Fetch the image from the direct Google Drive link
+                    const img = await faceapi.fetchImage(imageUrl);
+                    
+                    const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+
+                    if (detection && detection.descriptor) {
+                        labeledDescriptors.push(
+                            new faceapi.LabeledFaceDescriptors(person.name, [detection.descriptor])
+                        );
+                        successfulDescriptors++;
+                    } else {
+                        console.warn(`Could not detect face in image for: ${person.name} (ID: ${person.driveId}).`);
+                    }
+                } catch (e) {
+                    displayError(`Failed to fetch/process image for ${person.name}. Check if the Drive ID (${person.driveId}) is correct and the file is set to "Public".`);
+                    console.error(e);
+                }
+            }
+
+            if (successfulDescriptors === 0) {
+                // Only throw error if we failed to process images *after* filtering placeholders.
+                if (labeledDescriptors.length === 0) {
+                     throw new Error("No valid face descriptors could be generated. Check image URLs/IDs and file permissions.");
+                }
+            }
+
+            // Create the FaceMatcher with the generated descriptors and the threshold
+            return new faceapi.FaceMatcher(labeledDescriptors, ATTENDANCE_THRESHOLD);
+        }
+
+        /**
+         * Starts the webcam feed.
+         */
+        function startWebcam() {
+            if (!faceMatcher) {
+                return;
+            }
+            
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        // Once metadata is loaded, set the canvas to match the video dimensions
+                        const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                        faceapi.matchDimensions(canvas, displaySize);
+
+                        video.play();
+                        
+                        // Start the detection loop every 100ms (10 FPS)
+                        detectionInterval = setInterval(() => detectAndRecognize(displaySize), 100);
+                    };
+                })
+                .catch(err => {
+                    displayError('Camera access failed. Please ensure you allow camera access and refresh the page. Details: ' + err.message);
+                });
+        }
+
+        /**
+         * Main loop for detection and recognition
+         * @param {Object} displaySize - { width, height } of the video element
+         */
+        async function detectAndRecognize(displaySize) {
+            if (video.paused || video.ended) {
+                return;
+            }
+
+            // Detect faces, landmarks, and compute descriptors in one go
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+
+            // Resize detected boxes to fit the canvas display size
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+            
+            // Clear canvas from previous frame
+            const context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (resizedDetections.length > 0) {
+                resizedDetections.forEach(detection => {
+                    // Find the best match for the face descriptor
+                    const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                    
+                    let resultText = bestMatch.label;
+                    let color = '#ff0000'; // Default to red (Unknown)
+                    let statusClass = 'bg-red-500';
+
+                    if (bestMatch.label !== 'unknown') {
+                        // Display confidence for known faces
+                        resultText = `${bestMatch.label} (${(1 - bestMatch.distance).toFixed(2)})`;
+                        color = '#10b981'; // Emerald Green for known match
+                        statusClass = 'bg-green-600';
+
+                        statusMessage.textContent = `✅ ATTENDANCE MARKED: ${bestMatch.label}`;
+                        statusMessage.className = `p-4 text-center rounded-lg font-bold text-white shadow-lg ${statusClass}`;
+                        
+                        // *** REAL PROJECT STEP: You would save the name and timestamp to Firestore here ***
+                        // Example: recordAttendance(bestMatch.label);
+                    } else {
+                        resultText = `Unknown (${bestMatch.distance.toFixed(2)})`;
+                        statusMessage.textContent = 'Searching for face... Unknown Person Detected.';
+                        statusMessage.className = 'p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-yellow-500';
+                    }
+
+                    // Draw the bounding box and label on the canvas
+                    const box = detection.detection.box;
+                    const drawBox = new faceapi.draw.DrawBox(box, { 
+                        label: resultText,
+                        boxColor: color,
+                        lineWidth: 3,
+                        fontSize: 18
+                    });
+                    drawBox.draw(canvas);
+                });
+            } else {
+                 statusMessage.textContent = 'No face detected. Please center your face.';
+                 statusMessage.className = 'p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-gray-500';
+            }
+        }
+
+        // --- Execution Flow ---
+        window.onload = async () => {
+            // FIX: Check if faceapi loaded successfully before proceeding
+            if (typeof faceapi === 'undefined') {
+                displayError("Failed to load the face recognition library (face-api.js). Please check the CDN link or your network connection.");
+                return; // Stop execution
+            }
+
+            // Load models and then start the webcam
+            await loadModelsAndData();
+            startWebcam();
+        };
+
+        // Handle resizing (important for responsive canvas)
+        window.addEventListener('resize', () => {
+            if (video.readyState === video.HAVE_METADATA) {
+                 const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                 faceapi.matchDimensions(canvas, displaySize);
+            }
+        });
+
+    </script>
+</body>
 </html>
