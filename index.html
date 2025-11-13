@@ -97,7 +97,7 @@
         const statusMessage = document.getElementById('status-message');
         const knownFacesList = document.getElementById('known-faces-list');
         const errorMessage = document.getElementById('error-message');
-        const MODEL_URL = '/models'; // *** CRUCIAL: Path to your local /models folder ***
+        const MODEL_URL = './'; // <<< CHANGE APPLIED HERE: Looks for model files in the same folder
         const ATTENDANCE_THRESHOLD = 0.6; // Lower number is stricter match (0.6 is good balance)
         
         // --- START YOUR DATA DEFINITION HERE ---
@@ -173,7 +173,7 @@
             try {
                 statusMessage.textContent = 'Loading AI models...';
                 
-                // 1. Load models from the /models folder
+                // 1. Load models from the current folder (./)
                 await Promise.all([
                     faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                     faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
@@ -190,7 +190,7 @@
                 statusMessage.className = 'p-4 text-center rounded-lg font-bold text-white shadow-md transition-all duration-300 bg-green-500';
 
             } catch (error) {
-                // This error usually happens if models are not found at the /models path (404 error)
+                // This error usually happens if models are not found at the specified path (404 error)
                 displayError('Failed during initialization. Check console for details (Model loading or Face processing failed).');
                 console.error("Initialization Error:", error);
                 document.getElementById('loading').textContent = 'Initialization Failed.';
