@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Attendance System - Face Recognition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container-card {
+            max-width: 95%;
+            margin: 1rem auto;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        #video, #overlay-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            padding-top: 75%; /* Responsive height */
+            height: 0;
+            border-radius: 8px;
+        }
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+            transform: scaleX(-1); /* Mirror view */
+        }
+        #overlay-canvas {
+            transform: scaleX(-1);
+        }
+        .loading-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.25rem;
+            color: #4b5563;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-card bg-white p-6 md:p-8">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">Face Attendance Scanner</h1>
+        <p class="text-gray-600 mb-6">Attendance check using <b>Google Drive</b> for reference images (supports multiple images per person).</p>
+        <div id="video-container" class="mb-4 bg-gray-200 rounded-lg">
+            <video id="video" autoplay muted></video>
+            <canvas id="overlay-canvas"></canvas>
+            <div id="loading" class="loading-message">Loading AI models...</div>
+        </div>
+        <div id="status-message" class="p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-gray-500">
+            System Initializing...
+        </div>
+        <div class="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <h3 class="font-semibold text-lg text-yellow-800 mb-2">Known Faces List (Reference Data - Drive URLs)</h3>
+            <p class="text-sm text-yellow-700">
+                The system uses full Google Drive URLs. <b>IMPORTANT:</b> Each file must be set to "Public" sharing permission.
+            </p>
+            <ul id="known-faces-list" class="mt-2 text-sm text-yellow-900 list-disc list-inside grid grid-cols-2 sm:grid-cols-3">
+                <!-- List will be populated by JS -->
+            </ul>
+        </div>
+        <div id="error-message" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg hidden"></div>
+    </div>
+    <!-- Load face-api.js from local file (face-api.min.js) -->
+    <script src="./face-api.min.js"></script>
+    <script type="text/javascript">
+        // Global Variables
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('overlay-canvas');
+        const statusMessage = document.getElementById('status-message');
+        const knownFacesList = document.getElementById('known-faces-list');
+        const errorMessage = document.getElementById('error-message');
+        const MODEL_URL = './models/'; // Load models from /models/ folder
+        const ATTENDANCE_THRESHOLD = 0.6;
+
+        // --- Reference Images (Google Drive URLs) ---
+        const knownPeople = [
+            // Replace with your actual images
+            { label: 'Prashant Yadav', urls: [
+                'https://drive.google.com/file/d/1DUC6JWodRRGTwDIPRbRdc14wzvJRfFnR/view?usp=drive_link',
+                'https://drive.google.com/file/d/1sNolciYUKNSjIp5lkhL0abWnPQ_w2JqE/view?usp=drive_link'
+            ] },
+            { label: 'EM', urls: [
+                'https://drive.google.com/file/d/1hlnuqIKUBu6lOVQFfYbUGtXeZyGqETo4/view?usp=drive_link'
+            ] },
+            // more students ...
+            { label: 'Student 3', urls: ['https://drive.google.com/file/d/PH_ID_3/view?usp=drive_link'] }
+            // add more as needed
+        ];
+
+        let faceMatcher = null;
+        let detectionInterval = null;
+
+        function getDriveDirectLink(driveUrl) {
+            const regex = /\/d\/([a-zA-Z0-9_-]+)/;
+            const match = driveUrl.match(regex);
+            if (match && match[1]) {
+                const driveId = match[1];
+                return `https://drive.google.com/uc?export=download&id=${driveId}`;
+            }
+            console.warn("Failed to parse File ID from URL:", driveUrl);
+            return null;
+        }
+
+        function displayError(msg) {
+            errorMessage.textContent = `Error: ${msg}`;
+            errorMessage.classList.remove('hidden');
+            console.error(msg);
+        }
+
+        async function loadModelsAndData() {
+            try {
+                statusMessage.textContent = 'Loading AI models...';
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                statusMessage.textContent = 'Models loaded. Processing known faces from Google Drive...';
+                faceMatcher = await createFaceMatcher(knownPeople);
+                document.getElementById('loading').style.display = 'none';
+                statusMessage.textContent = 'Initialization Complete. Starting Webcam.';
+                statusMessage.className = 'p-4 text-center rounded-lg font-bold text-white shadow-md transition-all duration-300 bg-green-500';
+            } catch (error) {
+                displayError('Failed during initialization. Check console for details (Model loading or Face processing failed).');
+                document.getElementById('loading').textContent = 'Initialization Failed.';
+            }
+        }
+
+        async function createFaceMatcher(knownPeople) {
+            const labeledDescriptors = [];
+            for (const person of knownPeople) {
+                const descriptors = [];
+                knownFacesList.innerHTML += `<li class="truncate">${person.label} (${person.urls.length} images)</li>`;
+                for (const url of person.urls) {
+                    const directLink = getDriveDirectLink(url);
+                    if (!directLink) continue;
+                    try {
+                        const img = await faceapi.fetchImage(directLink);
+                        const detection = await faceapi.detectSingleFace(img, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+                        if (detection && detection.descriptor) {
+                            descriptors.push(detection.descriptor);
+                        } else {
+                            console.warn(`Could not detect face in image for ${person.label} from URL: ${url}. Skipping.`);
+                        }
+                    } catch (e) {
+                        console.error(`Failed to fetch/process image for ${person.label} from URL: ${url}. Check "Public" permission.`, e);
+                    }
+                }
+                if (descriptors.length > 0) {
+                    labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(person.label, descriptors));
+                }
+            }
+            if (labeledDescriptors.length === 0) {
+                throw new Error("Initialization Failed: No valid face descriptors generated. Check Google Drive URLs and permissions.");
+            }
+            return new faceapi.FaceMatcher(labeledDescriptors, ATTENDANCE_THRESHOLD);
+        }
+
+        function startWebcam() {
+            if (!faceMatcher) return;
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                        faceapi.matchDimensions(canvas, displaySize);
+                        video.play();
+                        detectionInterval = setInterval(() => detectAndRecognize(displaySize), 100);
+                    };
+                })
+                .catch(err => {
+                    displayError('Camera access failed. Details: ' + err.message);
+                });
+        }
+
+        async function detectAndRecognize(displaySize) {
+            if (video.paused || video.ended) return;
+            const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+            const context = canvas.getContext('2d');
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (resizedDetections.length > 0) {
+                resizedDetections.forEach(detection => {
+                    const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                    let resultText = bestMatch.label;
+                    let color = '#ff0000', statusClass = 'bg-red-500';
+                    if (bestMatch.label !== 'unknown') {
+                        resultText = `${bestMatch.label} (${(1 - bestMatch.distance).toFixed(2)})`;
+                        color = '#10b981';
+                        statusClass = 'bg-green-600';
+                        statusMessage.textContent = `✅ ATTENDANCE MARKED: ${bestMatch.label}`;
+                        statusMessage.className = `p-4 text-center rounded-lg font-bold text-white shadow-lg ${statusClass}`;
+                    } else {
+                        resultText = `Unknown (${bestMatch.distance.toFixed(2)})`;
+                        statusMessage.textContent = 'Searching for face... Unknown Person Detected.';
+                        statusMessage.className = 'p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-yellow-500';
+                    }
+                    const box = detection.detection.box;
+                    const drawBox = new faceapi.draw.DrawBox(box, { 
+                        label: resultText,
+                        boxColor: color,
+                        lineWidth: 3,
+                        fontSize: 18
+                    });
+                    drawBox.draw(canvas);
+                });
+            } else {
+                statusMessage.textContent = 'No face detected. Please center your face.';
+                statusMessage.className = 'p-4 text-center rounded-lg font-medium text-white shadow-md transition-all duration-300 bg-gray-500';
+            }
+        }
+
+        window.onload = async () => {
+            if (typeof faceapi === 'undefined') {
+                displayError("Error: Failed to load face-api.min.js. Ensure the library is in the root directory.");
+                return;
+            }
+            await loadModelsAndData();
+            startWebcam();
+        };
+
+        window.addEventListener('resize', () => {
+            if (video.readyState === video.HAVE_METADATA) {
+                const displaySize = { width: video.clientWidth, height: video.clientHeight };
+                faceapi.matchDimensions(canvas, displaySize);
+            }
+        });
+    </script>
+</body>
+</html>
