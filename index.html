@@ -82,16 +82,15 @@
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script defer>
     const knownPeople = [
-            { label: 'Prashant Yadav', urls: [
-                'image1.jpeg',
-                'image2.jpeg'
-            ] },
-            { label: 'EM', urls: [
-                'imageEM.jpg'
-
-            ] }
-            // ...add more students here, using same format!
-        ];
+        { label: 'Prashant Yadav', urls: [
+        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imagepy1.jpeg',
+        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imagepy2.jpeg'
+    ] },
+    { label: 'EM', urls: [
+        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imageem.jpg'
+    ] }
+    // ...add more students here
+];
     const FACE_MATCHING_THRESHOLD = 0.6, DETECTION_INTERVAL = 300, MIN_CONFIDENCE = 0.5;
     let modelsLoaded = false, webcamActive = false, detectionInterval = null;
     let labeledFaceDescriptors = [], faceMatcher = null, attendanceSet = new Set();
