@@ -46,51 +46,65 @@
 <body>
     <div class="container">
         <h1>👤 Face Recognition Attendance System</h1>
+
         <div class="status loading" id="status">
             <span class="spinner"></span> Loading models...
         </div>
+
         <div class="content">
             <div class="video-section">
                 <div class="video-label">Live Webcam Feed</div>
+
                 <div class="video-wrapper">
                     <video id="video" autoplay muted playsinline></video>
                     <canvas id="canvas"></canvas>
                 </div>
+
                 <div class="controls">
                     <button id="startBtn" onclick="startWebcam()">Start Webcam</button>
                     <button id="stopBtn" onclick="stopWebcam()" disabled>Stop Webcam</button>
                     <button id="clearBtn" onclick="clearResults()">Clear Results</button>
                 </div>
             </div>
+
             <div class="info-section">
                 <h2>Recognition Results</h2>
                 <div class="results" id="results">
                     <p style="color: #999; text-align: center;">No faces detected yet</p>
                 </div>
+
                 <div class="attendance-log">
                     <h3 style="margin-bottom: 10px; color: #333; font-size: 0.95em;">Attendance Log</h3>
                     <div id="log"></div>
                 </div>
             </div>
         </div>
+
         <div style="text-align: center; color: #666; font-size: 0.9em;">
-            <p>📌 Ensure camera permissions are granted. Face detection requires minimum face size of ~30x30 pixels.</p>
+            <p>📌 Ensure camera permissions are granted. Face detection requires clear frontal images.</p>
         </div>
     </div>
 
     <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-    <script defer>
+
+    <script>
     const knownPeople = [
-        { label: 'Prashant Yadav', urls: [
-        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imagepy1.jpeg',
-        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imagepy2.jpeg'
-    ] },
-    { label: 'EM', urls: [
-        'https://raw.githubusercontent.com/nobitaany/website-prashant/main/images/imageem.jpg'
-    ] }
-    // ...add more students here
+    { 
+        label: 'Prashant Yadav',
+        urls: [
+            'https://cdn.jsdelivr.net/gh/nobitaany/website-prashant/images/imagepy1.jpeg',
+            'https://cdn.jsdelivr.net/gh/nobitaany/website-prashant/images/imagepy2.jpeg'
+        ]
+    },
+    { 
+        label: 'EM',
+        urls: [
+            'https://cdn.jsdelivr.net/gh/nobitaany/website-prashant/images/imageem.jpg'
+        ]
+    }
 ];
+
     const FACE_MATCHING_THRESHOLD = 0.6, DETECTION_INTERVAL = 300, MIN_CONFIDENCE = 0.5;
     let modelsLoaded = false, webcamActive = false, detectionInterval = null;
     let labeledFaceDescriptors = [], faceMatcher = null, attendanceSet = new Set();
@@ -103,20 +117,25 @@
         try {
             updateStatus('Loading face detection models...', 'loading');
             const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models/';
+
             await Promise.all([
                 faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                 faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                 faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
                 faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
             ]);
+
             updateStatus('Models loaded. Loading reference faces...', 'loading');
+
             await loadReferenceFaces();
-            if (labeledFaceDescriptors.length === 0) {
-                throw new Error('No reference faces loaded. Check image URLs or use clear frontal face images.');
-            }
+
+            if (labeledFaceDescriptors.length === 0)
+                throw new Error('No reference faces loaded!');
+
             faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, FACE_MATCHING_THRESHOLD);
             modelsLoaded = true;
             updateStatus('Ready! Click "Start Webcam" to begin attendance.', 'ready');
+
         } catch (error) {
             console.error(error);
             updateStatus(`Error: ${error.message}`, 'error');
@@ -126,28 +145,32 @@
     async function loadReferenceFaces() {
         for (const person of knownPeople) {
             let descriptors = [];
+
             for (const imageUrl of person.urls) {
                 try {
-                    console.log('Loading image:', imageUrl);
-                    const img = new Image(); img.crossOrigin = 'anonymous';
+                    const img = new Image();  
+                    img.crossOrigin = 'anonymous';
+
                     await new Promise((resolve, reject) => {
                         img.onload = resolve;
                         img.onerror = () => reject(new Error(`Could not load image at ${imageUrl}`));
                         img.src = imageUrl;
                     });
+
                     const detection = await faceapi
                         .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: MIN_CONFIDENCE }))
-                        .withFaceLandmarks().withFaceDescriptor();
-                    if (!detection) {
-                        alert(`No face detected in image: ${imageUrl}. Please use a clear frontal face photo.`);
-                        continue;
-                    }
+                        .withFaceLandmarks()
+                        .withFaceDescriptor();
+
+                    if (!detection) continue;
+
                     descriptors.push(detection.descriptor);
+
                 } catch (e) {
-                    alert(`Error loading ${person.label}: ${e.message}`);
-                    continue;
+                    console.error(`Error loading ${person.label}: ${e.message}`);
                 }
             }
+
             if (descriptors.length > 0)
                 labeledFaceDescriptors.push(new faceapi.LabeledFaceDescriptors(person.label, descriptors));
         }
@@ -155,26 +178,35 @@
 
     async function startWebcam() {
         if (!modelsLoaded) {
-            alert('Models still loading. Please wait.');
+            alert('Models are still loading...');
             return;
         }
+
         try {
             const video = document.getElementById('video');
+
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
             });
+
             video.srcObject = stream;
-            video.onloadedmetadata = () => video.play();
+            video.play();
+
             webcamActive = true;
+
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
+
             updateStatus('Webcam active. Detecting faces...', 'ready');
+
             const canvas = document.getElementById('canvas');
             const displaySize = { width: video.width, height: video.height };
+
             video.addEventListener('play', () => {
                 faceapi.matchDimensions(canvas, displaySize);
                 startDetection(video, canvas, displaySize);
             });
+
         } catch (error) {
             updateStatus('Unable to access webcam. Check permissions.', 'error');
         }
@@ -183,81 +215,97 @@
     function stopWebcam() {
         const video = document.getElementById('video');
         const stream = video.srcObject;
+
         if (stream) stream.getTracks().forEach(track => track.stop());
-        video.srcObject = null; webcamActive = false;
-        if (detectionInterval) { clearInterval(detectionInterval); detectionInterval = null; }
+
+        video.srcObject = null;
+        webcamActive = false;
+
+        if (detectionInterval) clearInterval(detectionInterval);
+
         document.getElementById('startBtn').disabled = false;
         document.getElementById('stopBtn').disabled = true;
+
         updateStatus('Webcam stopped.', 'ready');
     }
 
     function startDetection(video, canvas, displaySize) {
         detectionInterval = setInterval(async () => {
             if (!webcamActive) return;
-            try {
-                const detections = await faceapi
-                    .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: MIN_CONFIDENCE }))
-                    .withFaceLandmarks().withFaceDescriptors();
-                const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                faceapi.draw.drawDetections(canvas, resizedDetections);
-                faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
-                recognizeFaces(resizedDetections);
-            } catch (error) {
-                console.log(error);
-            }
+
+            const detections = await faceapi
+                .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: MIN_CONFIDENCE }))
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+
+            const resizedDetections = faceapi.resizeResults(detections, displaySize);
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            faceapi.draw.drawDetections(canvas, resizedDetections);
+            faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+
+            recognizeFaces(resizedDetections);
+
         }, DETECTION_INTERVAL);
     }
 
     function recognizeFaces(detections) {
         const resultsDiv = document.getElementById('results');
         const results = [];
+
         if (detections.length === 0) {
             resultsDiv.innerHTML = '<p style="color: #999; text-align: center;">No faces detected</p>';
             return;
         }
+
         detections.forEach((detection, index) => {
             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
-            const label = bestMatch.label, distance = bestMatch.distance;
-            results.push({
-                index,
-                label,
-                distance,
-                isMatch: label !== 'unknown',
-                confidence: Math.round((1 - Math.min(distance, 1)) * 100) + '%'
-            });
-            if (label !== 'unknown' && !attendanceSet.has(label)) {
+
+            const label = bestMatch.label;
+            const distance = bestMatch.distance;
+
+            const confidence = Math.round((1 - Math.min(distance, 1)) * 100) + '%';
+
+            const isMatch = label !== 'unknown';
+
+            results.push({ label, isMatch, confidence });
+
+            if (isMatch && !attendanceSet.has(label)) {
                 attendanceSet.add(label);
                 addToLog(label);
             }
         });
-        if (results.length > 0) {
-            resultsDiv.innerHTML = results.map(r => `
-                <div class="result-item ${r.isMatch ? 'success' : 'unknown'}">
-                    <div>
-                        <div class="recognized-name">${r.label}</div>
-                        <div class="confidence">Confidence: ${r.confidence}</div>
-                    </div>
-                    <span class="badge ${r.isMatch ? 'matched' : 'unknown'}">
-                        ${r.isMatch ? '✓ Matched' : '? Unknown'}
-                    </span>
+
+        resultsDiv.innerHTML = results.map(r => `
+            <div class="result-item ${r.isMatch ? 'success' : 'unknown'}">
+                <div>
+                    <div class="recognized-name">${r.label}</div>
+                    <div class="confidence">Confidence: ${r.confidence}</div>
                 </div>
-            `).join('');
-        }
+                <span class="badge ${r.isMatch ? 'matched' : 'unknown'}">
+                    ${r.isMatch ? '✓ Matched' : '? Unknown'}
+                </span>
+            </div>
+        `).join('');
     }
 
     function addToLog(studentName) {
         const logDiv = document.getElementById('log');
         const timestamp = new Date().toLocaleTimeString('en-IN');
+
         const entry = document.createElement('div');
         entry.className = 'log-entry';
         entry.innerHTML = `<strong>${studentName}</strong><span class="log-time"> - ${timestamp}</span>`;
+
         logDiv.insertBefore(entry, logDiv.firstChild);
     }
 
     function clearResults() {
-        document.getElementById('results').innerHTML = '<p style="color: #999; text-align: center;">No faces detected yet</p>';
+        document.getElementById('results').innerHTML =
+            '<p style="color: #999; text-align: center;">No faces detected yet</p>';
+
         document.getElementById('log').innerHTML = '';
         attendanceSet.clear();
     }
@@ -265,8 +313,12 @@
     function updateStatus(message, type) {
         const statusDiv = document.getElementById('status');
         statusDiv.className = `status ${type}`;
-        statusDiv.innerHTML = type === 'loading' ? `<span class="spinner"></span> ${message}` : message;
+
+        statusDiv.innerHTML = type === 'loading'
+            ? `<span class="spinner"></span> ${message}`
+            : message;
     }
     </script>
+
 </body>
 </html>
