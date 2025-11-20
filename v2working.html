@@ -367,7 +367,7 @@
 <body>
     <div class="container">
         <h1>👤 Face Recognition Attendance</h1>
-        <div class="subtitle">✓ Face Recognition with Face-API.js created by Prashant Yadav</div>
+        <div class="subtitle">✓ Real Face Recognition with Face-API.js</div>
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('enroll')">📸 Enroll People</button>
             <button class="tab-btn" onclick="switchTab('attendance')">📷 Start Attendance</button>
@@ -749,7 +749,7 @@
                             // Calculate confidence percentage
                             const confidence = Math.round((1 - bestMatch.distance) * 100);
                             
-                            // Draw ONLY the bounding box around face (no landmarks/lips)
+                            // Draw box with improved styling
                             const drawBox = new faceapi.draw.DrawBox(box, {
                                 label: bestMatch.label === 'unknown' 
                                     ? `Unknown (${confidence}%)` 
@@ -759,7 +759,9 @@
                             });
                             drawBox.draw(canvas);
 
-                            // Landmarks removed - only box appears now
+                            // Draw landmarks for better tracking
+                            const drawLandmarks = new faceapi.draw.DrawFaceLandmarks(detection.landmarks);
+                            drawLandmarks.draw(canvas);
 
                             // If recognized (not "unknown")
                             if (bestMatch.label !== 'unknown') {

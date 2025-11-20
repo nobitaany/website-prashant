@@ -194,7 +194,6 @@
             position: absolute;
             top: 0;
             left: 0;
-            pointer-events: none;
         }
         .video-controls {
             display: flex;
@@ -367,7 +366,7 @@
 <body>
     <div class="container">
         <h1>👤 Face Recognition Attendance</h1>
-        <div class="subtitle">✓ Face Recognition with Face-API.js created by Prashant Yadav</div>
+        <div class="subtitle">✓ Real Face Recognition with Face-API.js</div>
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('enroll')">📸 Enroll People</button>
             <button class="tab-btn" onclick="switchTab('attendance')">📷 Start Attendance</button>
@@ -462,7 +461,7 @@
 
     <script>
         const MARK_ATTENDANCE_THRESHOLD = 0.6; // Face-API threshold (0-1 scale)
-        const DETECTION_INTERVAL = 100; // Check every 100ms for smooth tracking
+        const DETECTION_INTERVAL = 1500; // Check every 1.5 seconds
         
         let enrolledPeople = [];
         let attendanceRecords = [];
@@ -478,9 +477,9 @@
                 updateStatus('⏳ Loading Face-API.js models from ./models folder...', 'loading');
                 
                 await Promise.all([
-                    faceapi.nets.ssdMobilenetv1.loadFromUri('./models'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('./models'),
                     faceapi.nets.faceLandmark68Net.loadFromUri('./models'),
-                    faceapi.nets.faceRecognitionNet.loadFromUri('./models')
+                    faceapi.nets.ssdMobilenetv1.loadFromUri('./models')
                 ]);
                 
                 modelsLoaded = true;
@@ -714,24 +713,17 @@
         async function detectFaces() {
             const video = document.getElementById('video');
             const canvas = document.getElementById('canvas');
-            
-            // Wait for video to be ready
-            if (video.videoWidth === 0 || video.videoHeight === 0) {
-                setTimeout(detectFaces, 100);
-                return;
-            }
-            
             const displaySize = { width: video.videoWidth, height: video.videoHeight };
             
-            // Match canvas dimensions to video
-            faceapi.matchDimensions(canvas, displaySize);
+            canvas.width = displaySize.width;
+            canvas.height = displaySize.height;
 
-            const detectFrame = async () => {
+            detectionInterval = setInterval(async () => {
                 if (!webcamActive) return;
 
                 try {
                     const detections = await faceapi
-                        .detectAllFaces(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.5 }))
+                        .detectAllFaces(video)
                         .withFaceLandmarks()
                         .withFaceDescriptors();
 
@@ -746,23 +738,15 @@
                             const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
                             const box = detection.detection.box;
                             
-                            // Calculate confidence percentage
-                            const confidence = Math.round((1 - bestMatch.distance) * 100);
-                            
-                            // Draw ONLY the bounding box around face (no landmarks/lips)
+                            // Draw box and label
                             const drawBox = new faceapi.draw.DrawBox(box, {
-                                label: bestMatch.label === 'unknown' 
-                                    ? `Unknown (${confidence}%)` 
-                                    : `${bestMatch.label} (${confidence}%)`,
-                                lineWidth: 3,
-                                boxColor: bestMatch.distance <= MARK_ATTENDANCE_THRESHOLD ? '#4caf50' : '#ff9800'
+                                label: bestMatch.toString()
                             });
                             drawBox.draw(canvas);
 
-                            // Landmarks removed - only box appears now
-
                             // If recognized (not "unknown")
                             if (bestMatch.label !== 'unknown') {
+                                const confidence = Math.round((1 - bestMatch.distance) * 100);
                                 displayMatch(bestMatch.label, confidence);
                                 
                                 if (bestMatch.distance <= MARK_ATTENDANCE_THRESHOLD) {
@@ -774,14 +758,7 @@
                 } catch (error) {
                     console.error('Detection error:', error);
                 }
-
-                // Request next frame for continuous detection
-                if (webcamActive) {
-                    requestAnimationFrame(detectFrame);
-                }
-            };
-
-            detectFrame();
+            }, DETECTION_INTERVAL);
         }
 
         function displayMatch(name, confidence) {
